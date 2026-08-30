@@ -18,11 +18,10 @@ async function askGemini(prompt, attempt = 1) {
     return askGemini(prompt, attempt + 1);
   }
 
-  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
-  const json = await res.json();
-  return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-}
-  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+  if (!res.ok) {
+    throw new Error(`Gemini API error: ${res.status}`);
+  }
+
   const json = await res.json();
   return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 }
