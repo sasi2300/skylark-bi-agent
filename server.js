@@ -8,8 +8,8 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-const dealsBoard = await getBoardItems(process.env.DEALS_BOARD_ID);
-const woBoard = await getBoardItems(process.env.WORK_ORDERS_BOARD_ID);
+const DEALS_BOARD_ID = process.env.DEALS_BOARD_ID;
+const WORK_ORDERS_BOARD_ID = process.env.WORK_ORDERS_BOARD_ID;
 
 app.get("/debug", async (req, res) => {
   const keyPresent = !!process.env.GEMINI_API_KEY;
@@ -38,8 +38,8 @@ app.get("/debug", async (req, res) => {
 
   let boardCounts = "not tried";
   try {
-    const dealsBoard = await getBoardItems(process.env.DEALS_BOARD_ID);
-    const woBoard = await getBoardItems(process.env.WORK_ORDERS_BOARD_ID);
+    const dealsBoard = await getBoardItems(DEALS_BOARD_ID);
+    const woBoard = await getBoardItems(WORK_ORDERS_BOARD_ID);
     boardCounts = {
       dealsCount: dealsBoard.items_page.items.length,
       woCount: woBoard.items_page.items.length,
@@ -50,6 +50,7 @@ app.get("/debug", async (req, res) => {
 
   res.json({ keyPresent, keyPreview, geminiTest, boardCounts });
 });
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { message } = req.body;
