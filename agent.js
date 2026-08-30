@@ -32,7 +32,7 @@ You are a business intelligence assistant for Skylark Drones.
 You have two data sources:
 
 DEALS (sales pipeline): ${JSON.stringify(dealRows).slice(0, 6000)}
-WORK ORDERS (project execution): ${JSON.stringify(workOrderRows).slice(0, 6000)}
+WORK ORDERS (project execution): ${JSON.stringify(workOrderRows)}
 
 Known data quality issues: ${warnings.slice(0, 5).join("; ") || "none"}
 
