@@ -4,13 +4,16 @@ const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 async function askGemini(prompt) {
-  const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-    }),
-  });
+  const res = await fetch(GEMINI_URL, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-goog-api-key": process.env.GEMINI_API_KEY,
+  },
+  body: JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+  }),
+});
   if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
   const json = await res.json();
   return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
