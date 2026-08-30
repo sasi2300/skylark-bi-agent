@@ -1,7 +1,7 @@
 import fetch from "node-fetch";
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
 
 async function askGemini(prompt) {
   const res = await fetch(GEMINI_URL, {
