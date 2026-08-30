@@ -8,8 +8,8 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-const DEALS_BOARD_ID = process.env.DEALS_BOARD_ID;
-const WORK_ORDERS_BOARD_ID = process.env.WORK_ORDERS_BOARD_ID;
+const dealsBoard = await getBoardItems(process.env.DEALS_BOARD_ID);
+const woBoard = await getBoardItems(process.env.WORK_ORDERS_BOARD_ID);
 
 app.get("/debug", async (req, res) => {
   const keyPresent = !!process.env.GEMINI_API_KEY;
@@ -20,7 +20,7 @@ app.get("/debug", async (req, res) => {
   let geminiTest = "not tried";
   try {
     const r = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
       {
         method: "POST",
         headers: {
@@ -36,9 +36,20 @@ app.get("/debug", async (req, res) => {
     geminiTest = `fetch failed: ${e.message}`;
   }
 
-  res.json({ keyPresent, keyPreview, geminiTest });
-});
+  let boardCounts = "not tried";
+  try {
+    const dealsBoard = await getBoardItems(process.env.DEALS_BOARD_ID);
+    const woBoard = await getBoardItems(process.env.WORK_ORDERS_BOARD_ID);
+    boardCounts = {
+      dealsCount: dealsBoard.items_page.items.length,
+      woCount: woBoard.items_page.items.length,
+    };
+  } catch (e) {
+    boardCounts = `fetch failed: ${e.message}`;
+  }
 
+  res.json({ keyPresent, keyPreview, geminiTest, boardCounts });
+});
 app.post("/api/chat", async (req, res) => {
   try {
     const { message } = req.body;
