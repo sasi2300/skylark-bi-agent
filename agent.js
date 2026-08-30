@@ -28,7 +28,9 @@ async function askGemini(prompt, attempt = 1) {
 
 function parseJsonLoose(text) {
   const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-  return JSON.parse(cleaned);
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error(`No JSON object found in: ${cleaned.slice(0, 200)}`);
+  return JSON.parse(match[0]);
 }
 
 // ---- Generic, reusable data operations (no business logic baked in) ----
@@ -102,7 +104,11 @@ Only use field names that exactly match the lists above. Use filters to scope by
 
 function runSpec(spec, dealRows, workOrderRows) {
   const targetRows =
-    spec.board === "workOrders" ? workOrderRows : spec.board === "both" ? [...dealRows, ...workOrderRows] : dealRows;
+    spec.board === "workOrders"
+      ? workOrderRows
+      : spec.board === "both"
+      ? [...dealRows, ...workOrderRows]
+      : dealRows;
 
   switch (spec.operation) {
     case "groupByCount":
@@ -145,6 +151,7 @@ export async function answerQuery(question, dealRows, workOrderRows, warnings) {
   try {
     spec = await generateSpec(question, dealFields, woFields);
   } catch (e) {
+    console.error("Spec generation failed:", e.message);
     return {
       answer: "I had trouble understanding that question — could you rephrase it?",
       caveats: warnings.slice(0, 3),
@@ -159,6 +166,7 @@ export async function answerQuery(question, dealRows, workOrderRows, warnings) {
   try {
     result = runSpec(spec, dealRows, workOrderRows);
   } catch (e) {
+    console.error("Spec execution failed:", e.message, JSON.stringify(spec));
     return {
       answer: `I understood the question but hit an issue computing the answer (${e.message}). Could you rephrase it?`,
       caveats: warnings.slice(0, 3),
