@@ -24,7 +24,7 @@ app.post("/api/chat", async (req, res) => {
     const workOrders = normalizeBoard(woBoard);
     const allWarnings = [...deals.warnings, ...workOrders.warnings];
 
-    const result = answerQuery(message, deals.rows, workOrders.rows, allWarnings);
+    const result = await answerQuery(message, deals.rows, workOrders.rows, allWarnings);
     res.json(result);
   } catch (err) {
     console.error(err);
