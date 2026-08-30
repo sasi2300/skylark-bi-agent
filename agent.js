@@ -3,17 +3,25 @@ import fetch from "node-fetch";
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 
-async function askGemini(prompt) {
+async function askGemini(prompt, attempt = 1) {
   const res = await fetch(GEMINI_URL, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-goog-api-key": process.env.GEMINI_API_KEY,
-  },
-  body: JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-  }),
-});
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": process.env.GEMINI_API_KEY,
+    },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+  });
+
+  if (res.status === 503 && attempt < 2) {
+    await new Promise((r) => setTimeout(r, 1500));
+    return askGemini(prompt, attempt + 1);
+  }
+
+  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+  const json = await res.json();
+  return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+}
   if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
   const json = await res.json();
   return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
