@@ -1,47 +1,39 @@
-// Very simple intent + filter matcher so the agent works with zero API keys.
-// Swap this out for an LLM call later without touching mondayClient/normalize.
+import fetch from "node-fetch";
 
-export function answerQuery(question, dealRows, workOrderRows, warnings) {
-  const q = question.toLowerCase();
-  let scope = [];
-  let scopeName = "";
+const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
-  if (q.includes("deal") || q.includes("pipeline") || q.includes("revenue") || q.includes("sales")) {
-    scope = dealRows;
-    scopeName = "Deals";
-  } else if (q.includes("work order") || q.includes("project") || q.includes("execution")) {
-    scope = workOrderRows;
-    scopeName = "Work Orders";
-  } else {
-    return {
-      answer:
-        "I can answer about Deals (pipeline/revenue/sales) or Work Orders (project execution). Which are you asking about?",
-      caveats: [],
-    };
-  }
+async function askGemini(prompt) {
+  const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+  const json = await res.json();
+  return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+}
 
-  // naive keyword filter across all fields
-  const keywords = q
-    .replace(/[^a-z0-9\s]/g, "")
-    .split(" ")
-    .filter((w) => w.length > 3);
+export async function answerQuery(question, dealRows, workOrderRows, warnings) {
+  const prompt = `
+You are a business intelligence assistant for Skylark Drones.
+You have two data sources:
 
-  const matches = scope.filter((row) =>
-    keywords.some((kw) =>
-      Object.values(row).some((v) => typeof v === "string" && v.toLowerCase().includes(kw))
-    )
-  );
+DEALS (sales pipeline): ${JSON.stringify(dealRows).slice(0, 6000)}
+WORK ORDERS (project execution): ${JSON.stringify(workOrderRows).slice(0, 6000)}
 
-  if (matches.length === 0) {
-    return {
-      answer: `I couldn't find matching records in ${scopeName} for that query. Could you rephrase or narrow it down (e.g. by sector, status, or date range)?`,
-      caveats: warnings.slice(0, 3),
-    };
-  }
+Known data quality issues: ${warnings.slice(0, 5).join("; ") || "none"}
 
-  return {
-    answer: `Found ${matches.length} matching record(s) in ${scopeName}. Top result: "${matches[0].name}".`,
-    matches: matches.slice(0, 10),
-    caveats: warnings.slice(0, 3),
-  };
+User question: "${question}"
+
+Answer the question directly using only the data above. If the question is
+too ambiguous to answer confidently, ask ONE clarifying question instead of
+guessing. Mention any relevant data caveats briefly at the end. Keep the
+answer concise.
+`;
+
+  const answer = await askGemini(prompt);
+  return { answer, caveats: warnings.slice(0, 3) };
 }
