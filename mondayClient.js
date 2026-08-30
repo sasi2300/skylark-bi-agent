@@ -1,8 +1,7 @@
 import fetch from "node-fetch";
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
-const dealsBoard = await getBoardItems(process.env.DEALS_BOARD_ID);
-const woBoard = await getBoardItems(process.env.WORK_ORDERS_BOARD_ID);
+
 
 async function mondayQuery(query, variables = {}) {
   const res = await fetch(MONDAY_API_URL, {
