@@ -1,6 +1,8 @@
 import fetch from "node-fetch";
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
+const dealsBoard = await getBoardItems(process.env.DEALS_BOARD_ID);
+const woBoard = await getBoardItems(process.env.WORK_ORDERS_BOARD_ID);
 
 async function mondayQuery(query, variables = {}) {
   const res = await fetch(MONDAY_API_URL, {
@@ -40,6 +42,7 @@ export async function getBoardItems(boardId) {
         name
         columns { id title type }
         items_page(limit: 500) {
+          cursor
           items {
             id
             name
@@ -51,7 +54,28 @@ export async function getBoardItems(boardId) {
   `;
   const data = await mondayQuery(query, { boardId: [boardId] });
   const board = data.boards[0];
+  let allItems = [...board.items_page.items];
+  let cursor = board.items_page.cursor;
 
+  while (cursor) {
+    const nextQuery = `
+      query ($cursor: String!) {
+        next_items_page(cursor: $cursor, limit: 500) {
+          cursor
+          items {
+            id
+            name
+            column_values { id text value column { title } }
+          }
+        }
+      }
+    `;
+    const nextData = await mondayQuery(nextQuery, { cursor });
+    allItems = allItems.concat(nextData.next_items_page.items);
+    cursor = nextData.next_items_page.cursor;
+  }
+
+  board.items_page.items = allItems;
   cache.set(cacheKey, { data: board, ts: Date.now() });
   return board;
 }
