@@ -33,7 +33,10 @@ function parseJsonLoose(text) {
   return JSON.parse(match[0]);
 }
 
-// ---- Generic, reusable data operations (no business logic baked in) ----
+// ---------------------------------------------------------------------
+// Generic, reusable data operations — no business logic baked in, so
+// these work for any question shape, not just ones anticipated in advance.
+// ---------------------------------------------------------------------
 
 function matchesFilters(row, filters = {}) {
   return Object.entries(filters).every(([key, val]) => {
@@ -47,16 +50,38 @@ function groupByCount(rows, field, filters = {}) {
   const subset = rows.filter((r) => matchesFilters(r, filters));
   const counts = {};
   for (const row of subset) {
+    // Missing values get their own honest "Unknown" bucket rather than
+    // being silently dropped from the total.
     const key = row[field] ?? "Unknown";
     counts[key] = (counts[key] || 0) + 1;
   }
   return counts;
 }
 
+// Missing/non-numeric values are excluded from the sum (not treated as 0
+// contributing rows) and reported separately, so a total never silently
+// understates itself without saying how much of the dataset it covers.
 function sumField(rows, field, filters = {}) {
   const subset = rows.filter((r) => matchesFilters(r, filters));
-  const total = subset.reduce((sum, row) => sum + (parseFloat(row[field]) || 0), 0);
-  return { total, matchedRows: subset.length };
+  let total = 0;
+  let missingValueRows = 0;
+
+  for (const row of subset) {
+    const raw = row[field];
+    const val = parseFloat(raw);
+    if (raw == null || isNaN(val)) {
+      missingValueRows++;
+    } else {
+      total += val;
+    }
+  }
+
+  return {
+    total,
+    matchedRows: subset.length,
+    rowsWithValue: subset.length - missingValueRows,
+    missingValueRows,
+  };
 }
 
 function countRows(rows, filters = {}) {
@@ -72,7 +97,34 @@ function getFieldNames(rows) {
   return Object.keys(rows[0]).filter((k) => k !== "id");
 }
 
-// ---- Step 1: ask the LLM to produce a query spec, not an answer ----
+// "Leadership updates" interpretation: a compact, pre-aggregated snapshot
+// across both boards — status/sector breakdowns and totals — suitable for
+// a founder-level digest rather than a raw data dump. See Decision Log.
+function leadershipSummary(dealRows, workOrderRows) {
+  return {
+    deals: {
+      total: dealRows.length,
+      byStatus: groupByCount(dealRows, "Deal Status"),
+      bySector: groupByCount(dealRows, "Sector/Service"),
+      value: sumField(dealRows, "Masked Deal value"),
+    },
+    workOrders: {
+      total: workOrderRows.length,
+      byExecutionStatus: groupByCount(workOrderRows, "Execution Status"),
+      bySector: groupByCount(workOrderRows, "Sector"),
+      billedValue: sumField(
+        workOrderRows,
+        "Billed Value in Rupees (Excl of GST.) (Masked)"
+      ),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------
+// Step 1: ask the LLM to produce a query SPEC (an instruction), not an
+// answer directly. This keeps exact counting/summing in deterministic
+// code and reserves the LLM for understanding intent + phrasing.
+// ---------------------------------------------------------------------
 
 async function generateSpec(question, dealFields, woFields) {
   const prompt = `
@@ -83,12 +135,15 @@ WORK ORDERS fields available: ${JSON.stringify(woFields)}
 
 User question: "${question}"
 
-Respond with ONLY a JSON object (no markdown, no explanation) in ONE of these two shapes:
+Respond with ONLY a JSON object (no markdown, no explanation) in ONE of these shapes:
 
-1. If the question is too ambiguous to answer confidently (e.g. unclear time period, unclear which board, unclear metric), respond:
+1. If the question is too ambiguous to answer confidently (unclear time period, unclear board, unclear metric), respond:
 { "clarify": "your one clarifying question here" }
 
-2. Otherwise, respond with an operation to run:
+2. If the question asks for a general leadership/executive/status update or summary (not a specific single metric), respond:
+{ "operation": "leadershipSummary" }
+
+3. Otherwise, respond with a specific operation:
 {
   "board": "deals" | "workOrders" | "both",
   "operation": "groupByCount" | "sumField" | "countRows" | "sampleRows",
@@ -103,6 +158,10 @@ Only use field names that exactly match the lists above. Use filters to scope by
 }
 
 function runSpec(spec, dealRows, workOrderRows) {
+  if (spec.operation === "leadershipSummary") {
+    return leadershipSummary(dealRows, workOrderRows);
+  }
+
   const targetRows =
     spec.board === "workOrders"
       ? workOrderRows
@@ -124,7 +183,9 @@ function runSpec(spec, dealRows, workOrderRows) {
   }
 }
 
-// ---- Step 2: ask the LLM to phrase the answer using the real result ----
+// ---------------------------------------------------------------------
+// Step 2: ask the LLM to phrase the answer using the real, exact result.
+// ---------------------------------------------------------------------
 
 async function phraseAnswer(question, result, warnings) {
   const prompt = `
@@ -136,12 +197,19 @@ EXACT computed result (trust this completely, do not recalculate): ${JSON.string
 
 Known data quality issues: ${warnings.slice(0, 5).join("; ") || "none"}
 
-Write a concise, natural-language answer using the exact result above. Add brief context/insight where helpful. Mention relevant data caveats briefly at the end if any apply.
+Write a concise, natural-language answer using the exact result above. If a
+sum includes "missingValueRows" or "rowsWithValue", mention how many records
+the total actually covers (e.g. "based on 165 of 346 records with a recorded
+value") rather than presenting the total as if it covered everything. Add
+brief context/insight where helpful. Mention relevant data caveats briefly
+at the end if any apply.
 `;
   return askGemini(prompt);
 }
 
-// ---- Main entry point ----
+// ---------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------
 
 export async function answerQuery(question, dealRows, workOrderRows, warnings) {
   const dealFields = getFieldNames(dealRows);
